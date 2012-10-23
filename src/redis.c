@@ -230,6 +230,7 @@ struct redisCommand redisCommandTable[] = {
     {"pttl",pttlCommand,2,"r",0,NULL,1,1,1,0,0},
     {"persist",persistCommand,2,"w",0,NULL,1,1,1,0,0},
     {"slaveof",slaveofCommand,3,"ast",0,NULL,0,0,0,0,0},
+    {"sentinels", sentinelsCommand,-3,"ast",0,NULL,0,0,0,0,0},
     {"debug",debugCommand,-2,"as",0,NULL,0,0,0,0,0},
     {"config",configCommand,-2,"ar",0,NULL,0,0,0,0,0},
     {"subscribe",subscribeCommand,-2,"rpslt",0,NULL,0,0,0,0,0},
@@ -1143,6 +1144,13 @@ void initServerConfig() {
     server.repl_slave_ro = 1;
     server.repl_down_since = time(NULL);
     server.slave_priority = REDIS_DEFAULT_SLAVE_PRIORITY;
+    server.sentinels = NULL;
+    server.sentinel_iterator = NULL;
+    server.sentinel_conn = NULL;
+    server.sentinel_group_name = NULL;
+    server.sentinel_conn_state = REDIS_SENTINEL_NONE;
+    server.repl_reconnect_using_sentinel = 0;
+    server.repl_sentinel_last_io = 0;
 
     /* Client output buffer limits */
     server.client_obuf_limits[REDIS_CLIENT_LIMIT_CLASS_NORMAL].hard_limit_bytes = 0;
@@ -1472,9 +1480,9 @@ void call(redisClient *c, int flags) {
 
     /* Sent the command to clients in MONITOR mode, only if the commands are
      * not geneated from reading an AOF. */
-    if (listLength(server.monitors) &&
-        !server.loading &&
-        !(c->cmd->flags & REDIS_CMD_SKIP_MONITOR))
+    if (listLength(server.monitors) && 
+        !server.loading &&        
+        !(c->cmd->flags & REDIS_CMD_SKIP_MONITOR))        
     {
         replicationFeedMonitors(c,server.monitors,c->db->id,c->argv,c->argc);
     }
@@ -2074,7 +2082,24 @@ sds genRedisInfoString(char *section) {
                 "slave_read_only:%d\r\n",
                 server.slave_priority,
                 server.repl_slave_ro);
+
+            if (server.sentinels != NULL) {
+                listIter li;
+                listNode *node = NULL;
+                int i = 0;
+
+                info = sdscatprintf(info, "sentinel_group:%s\r\n", server.sentinel_group_name);
+
+                listRewind(server.sentinels, &li);
+
+                while ((node = listNext(&li)) != NULL) {
+                    sentinelInfo *s = (sentinelInfo*)node->value;
+
+                    info = sdscatprintf(info, "sentinel%d:%s:%d\r\n", i++, s->host, s->port);
+                }
+            }
         }
+
         info = sdscatprintf(info,
             "connected_slaves:%lu\r\n",
             listLength(server.slaves));
