@@ -222,7 +222,7 @@ void loadServerConfigFromString(char *config) {
             int j = 0;
             server.sentinels = listCreate();
             server.sentinel_master_name = sdsnew(argv[1]);
-            server.promotable = atoi(argv[2]);
+            server.promotable = strcasecmp(argv[2], "promotable") == 0;
 
             for (j = 3; j < argc-1; j+= 2) {
                 char *host = argv[j];
