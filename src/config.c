@@ -218,12 +218,13 @@ void loadServerConfigFromString(char *config) {
             server.masterhost = sdsnew(argv[1]);
             server.masterport = atoi(argv[2]);
             server.repl_state = REDIS_REPL_CONNECT;
-        } else if (!strcasecmp(argv[0],"sentinels") && argc >= 4) {
+        } else if (!strcasecmp(argv[0],"sentinels") && argc >= 5) {
             int j = 0;
             server.sentinels = listCreate();
             server.sentinel_master_name = sdsnew(argv[1]);
+            server.promotable = atoi(argv[2]);
 
-            for (j = 2; j < argc-1; j+= 2) {
+            for (j = 3; j < argc-1; j+= 2) {
                 char *host = argv[j];
                 long port = atol(argv[j+1]);
 

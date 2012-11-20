@@ -2395,18 +2395,20 @@ void sentinelCommand(redisClient *c) {
                 addReply(c, shared.ok);
             }
         } else if (!strcasecmp(c->argv[2]->ptr, "join")) {
-            /* SENTINEL GROUP JOIN <group-name> <my-ip> <my-port> */
+            /* SENTINEL GROUP JOIN <group-name> <my-ip> <my-port> <promotable> */
             sentinelRedisInstance *ri;
             char *name = NULL;
             char *ip = NULL;
             int port = 0;
-
-            if (c->argc != 6)
+            int promotable = 0;
+            
+            if (c->argc != 7)
                 goto numargserr;
 
             name = c->argv[3]->ptr;
             ip = c->argv[4]->ptr;
             port = atoi(c->argv[5]->ptr);
+            promotable = atoi(c->argv[6]->ptr);
 
             sentinelGroupLock *lock = getGroupLockByName(name);
 
@@ -2454,6 +2456,11 @@ void sentinelCommand(redisClient *c) {
 
             ri = sentinelGetMasterByName(name);
             if (ri == NULL) {
+                if (!promotable) {
+                    /* This redis does not want to be a master */
+                    addReplySds(c,sdsnew("-IDONTKNOW I have not enough information to reply. Please ask another Sentinel.\r\n"));
+                    return;
+                }
                 /* We only get to solo mode if the cluster quorum was specified 1 */
                 if (num_connected_sentinels == 0) {
                     redisLog(REDIS_NOTICE, "Adding master %s:%d to group %s! (SOLO MODE)", ip, port, name);

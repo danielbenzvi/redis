@@ -734,8 +734,8 @@ void syncWithSentinelConnected(const redisAsyncContext *c, int status) {
             redisAsyncCommand(server.sentinel_conn, 
                       syncWithSentinelJoinGroupCallback, 
                       NULL, 
-                      "sentinel group join %s %s %d", 
-                      server.sentinel_master_name, inet_ntoa(sa.sin_addr), server.port);
+                      "sentinel group join %s %s %d %d", 
+                      server.sentinel_master_name, inet_ntoa(sa.sin_addr), server.port, server.promotable);
             server.sentinel_conn_state = REDIS_SENTINEL_RECEIVE_JOIN;
         }
     }

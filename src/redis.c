@@ -1149,6 +1149,7 @@ void initServerConfig() {
     server.repl_down_since = time(NULL);
     server.slave_priority = REDIS_DEFAULT_SLAVE_PRIORITY;
     server.sentinels = NULL;
+    server.promotable = 0;
     server.sentinel_iterator = NULL;
     server.sentinel_conn = NULL;
     server.sentinel_master_name = NULL;
