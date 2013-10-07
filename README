@@ -1,13 +1,13 @@
 This branch contains a patch to redis that allows automatic cluster bootstrapping.
 Its based on the redis sentinel.
 
-The code adds the ability to tell redis to find it's master through a sentinel group.
-If no master is found through quorum between the sentinels, a special cluster-wide lock is created and the first redis joining the group becomes the group master.
+The code adds the ability to tell redis to find its master through a sentinel group.
+If no master is found, Sentinel initiates a quorum between the sentinels, a special cluster-wide lock is created and if agreement is reached the redis instance joining the group becomes the group master.
 Subsequent requests to find a master will point to the newly chosen master.
 
 After this, the original sentinel logic will manage master failovers should a master fail.
 
-----------------------------------------------------------------------------------------------------------------
+--------------------------
 
 Implementation specific:
 
