@@ -1,131 +1,34 @@
-Where to find complete Redis documentation?
--------------------------------------------
+This branch contains a patch to redis that allows automatic cluster bootstrapping.
+Its based on the redis sentinel.
 
-This README is just a fast "quick start" document. You can find more detailed
-documentation at http://redis.io
+The code adds the ability to tell redis to find it's master through a sentinel group.
+If no master is found through quorum between the sentinels, a special cluster-wide lock is created and the first redis joining the group becomes the group master.
+Subsequent requests to find a master will point to the newly chosen master.
 
-Building Redis
---------------
+After this, the original sentinel logic will manage master failovers should a master fail.
 
-Redis can be compiled and used on Linux, OSX, OpenBSD, NetBSD, FreeBSD.
-We support big endian and little endian architectures.
+----------------------------------------------------------------------------------------------------------------
 
-It may compile on Solaris derived systems (for instance SmartOS) but our
-support for this platform is "best effort" and Redis is not guaranteed to
-work as well as in Linux, OSX, and *BSD there.
+Implementation specific:
 
-It is as simple as:
+It works by issuing a 'sentinels' command either through a cli, a command line parameter or a config directive.
 
-    % make
+sentinels is a variable argument command. The minimum required parameters are the group name, the host and the port of at least one sentinel.
+The syntax is as follows:
+sentinels group_name sentinel_host sentinel_port sentinel1_host sentinel1_port ...
 
-You can run a 32 bit Redis binary using:
+Once the command is issued, the sentinels are added to an adlist and a flag is set to begin the connection sequence (using the replication cron routine). We use hiredis to communicate with the sentinels. 
+If a sentinel connection failed, the next sentinel in the list is chosen (a simple round-robin).
 
-    % make 32bit
+Once a connection is established, the redis instance performs a 'sentinel get-master-addr-by-name (group_name)' to find the address of the master. 
+If the sentinel has no master and is unable to achieve quorum for adding this redis instasnce as a master, it closes the connection and reconnects to the next sentinel in the list.
 
-After building Redis is a good idea to test it, using:
+When the master is found, we initiate a master->slave sync. If the sync fails, we try to find the master again through sentinel.
 
-    % make test
+Only in the following cases, A failure in the master->slave connection will NOT trigger a sentinel lookup:
+a. The user stopped the sentinel lookup by issuing 'sentinels no one'
+b. The master->slave connection established successfully after a sentinel lookup.
+c. The user executed 'slaveof' manually.
+d. The user declared master using the 'slaveof no one'
 
-NOTE: if after building Redis with a 32 bit target you need to rebuild it
-      with a 64 bit target you need to perform a "make clean" in the root
-      directory of the Redis distribution.
-
-Allocator
----------
-
-Selecting a non-default memory allocator when building Redis is done by setting
-the `MALLOC` environment variable. Redis is compiled and linked against libc
-malloc by default, with the exception of jemalloc being the default on Linux
-systems. This default was picked because jemalloc has proven to have fewer
-fragmentation problems than libc malloc.
-
-To force compiling against libc malloc, use:
-
-    % make MALLOC=libc
-
-To compile against jemalloc on Mac OS X systems, use:
-
-    % make MALLOC=jemalloc
-
-Verbose build
--------------
-
-Redis will build with a user friendly colorized output by default.
-If you want to see a more verbose output use the following:
-
-    % make V=1
-
-Running Redis
--------------
-
-To run Redis with the default configuration just type:
-
-    % cd src
-    % ./redis-server
-    
-If you want to provide your redis.conf, you have to run it using an additional
-parameter (the path of the configuration file):
-
-    % cd src
-    % ./redis-server /path/to/redis.conf
-
-It is possible to alter the Redis configuration passing parameters directly
-as options using the command line. Examples:
-
-    % ./redis-server --port 9999 --slaveof 127.0.0.1 6379
-    % ./redis-server /etc/redis/6379.conf --loglevel debug
-
-All the options in redis.conf are also supported as options using the command
-line, with exactly the same name.
-
-Playing with Redis
-------------------
-
-You can use redis-cli to play with Redis. Start a redis-server instance,
-then in another terminal try the following:
-
-    % cd src
-    % ./redis-cli
-    redis> ping
-    PONG
-    redis> set foo bar
-    OK
-    redis> get foo
-    "bar"
-    redis> incr mycounter
-    (integer) 1
-    redis> incr mycounter
-    (integer) 2
-    redis> 
-
-You can find the list of all the available commands here:
-
-    http://redis.io/commands
-
-Installing Redis
------------------
-
-In order to install Redis binaries into /usr/local/bin just use:
-
-    % make install
-
-You can use "make PREFIX=/some/other/directory install" if you wish to use a
-different destination.
-
-Make install will just install binaries in your system, but will not configure
-init scripts and configuration files in the appropriate place. This is not
-needed if you want just to play a bit with Redis, but if you are installing
-it the proper way for a production system, we have a script doing this
-for Ubuntu and Debian systems:
-
-    % cd utils
-    % ./install_server
-
-The script will ask you a few questions and will setup everything you need
-to run Redis properly as a background daemon that will start again on
-system reboots.
-
-You'll be able to stop and start Redis using the script named
-/etc/init.d/redis_<portnumber>, for instance /etc/init.d/redis_6379.
-
-Enjoy!
+This flow ensures that sentinel is used only till a master is found and it's connection is established successfully. At that point we assume sentinel will become aware of this instance and will manage it for future state changes.
