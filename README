@@ -1,5 +1,5 @@
 This branch contains a patch to redis that allows automatic cluster bootstrapping.
-Its based on the redis sentinel.
+It's based on redis sentinel.
 
 The code adds the ability to tell redis to find its master through a sentinel group.
 If no master is found, Sentinel initiates a quorum between the sentinels, a special cluster-wide lock is created and if agreement is reached the redis instance joining the group becomes the group master.
