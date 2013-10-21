@@ -1,8 +1,8 @@
 This branch contains a patch to redis that allows automatic cluster bootstrapping.
 It's based on redis sentinel.
 
-The code adds the ability to tell redis to find its master through a sentinel group.
-If no master is found, Sentinel initiates a quorum between the sentinels, a special cluster-wide lock is created and if agreement is reached the redis instance joining the group becomes the group master.
+The code lets redis become a part of a group, and find out who is the master of the group.
+If no master is found, The sentinels initiate a quorum between themselves and if agreement is reached the redis instance joining the group becomes the group master.
 Subsequent requests to find a master will point to the newly chosen master.
 
 After this, the original sentinel logic will manage master failovers should a master fail.
@@ -11,24 +11,26 @@ After this, the original sentinel logic will manage master failovers should a ma
 
 Implementation specific:
 
-It works by issuing a 'sentinels' command either through a cli, a command line parameter or a config directive.
-
-sentinels is a variable argument command. The minimum required parameters are the group name, the host and the port of at least one sentinel.
+The patch adds a new variabule argument command: 'sentinels'. The minimum required parameters are the group name, the host and the port of at least one sentinel.
 The syntax is as follows:
 sentinels group_name sentinel_host sentinel_port sentinel1_host sentinel1_port ...
 
 Once the command is issued, the sentinels are added to an adlist and a flag is set to begin the connection sequence (using the replication cron routine). We use hiredis to communicate with the sentinels. 
 If a sentinel connection failed, the next sentinel in the list is chosen (a simple round-robin).
 
-Once a connection is established, the redis instance performs a 'sentinel get-master-addr-by-name (group_name)' to find the address of the master. 
-If the sentinel has no master and is unable to achieve quorum for adding this redis instasnce as a master, it closes the connection and reconnects to the next sentinel in the list.
+Once a connection is established, the redis instance performs a 'sentinel get-master-addr-by-name (group_name)' to find the address of the group master. 
 
-When the master is found, we initiate a master->slave sync. If the sync fails, we try to find the master again through sentinel.
+If the sentinel has no master then:
+a. The sentinel tries to achieve quorum, and adds the redis instance as a group master.
+b. The sentinels are unable to achieve quorum (due to insufficient amount of active sentinels as defined in the config or a race between the sentinels)
 
-Only in the following cases, A failure in the master->slave connection will NOT trigger a sentinel lookup:
-a. The user stopped the sentinel lookup by issuing 'sentinels no one'
+When the master is found, the redis initiates a master->slave sync. If the sync fails, it tries to find the master through sentinel again.
+
+Only in the following cases, A failure in the master->slave connection will NOT trigger another master-through-sentinel lookup:
+a. The user stopped the lookup by issuing 'sentinels no one'
 b. The master->slave connection established successfully after a sentinel lookup.
 c. The user executed 'slaveof' manually.
 d. The user declared master using the 'slaveof no one'
 
-This flow ensures that sentinel is used only till a master is found and it's connection is established successfully. At that point we assume sentinel will become aware of this instance and will manage it for future state changes.
+This flow ensures that sentinel is used only till a master is found and its connection is established successfully. 
+At that point we assume sentinel will become aware of this instance and will manage it for future state changes.
